@@ -12,9 +12,6 @@ services:
     build:
       context: ./server
       dockerfile: Dockerfile
-    env:
-      QDRANT_HOST: localhost
-      QDRANT_PORT: 6333
     env_file:
       - .env
     ports:
