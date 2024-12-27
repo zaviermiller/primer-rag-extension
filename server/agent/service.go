@@ -81,16 +81,19 @@ func (s *Service) generateCompletion(ctx context.Context, integrationID, apiToke
 	// ahead of time and stored in a database
 	var err error
 	s.datasetsInit.Do(func() {
-		var files []fs.DirEntry
-		files, err = os.ReadDir("data")
+		var filenames []string
+		err = filepath.WalkDir("data", func(path string, d fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if !d.IsDir() {
+				filenames = append(filenames, path)
+			}
+			return nil
+		})
 		if err != nil {
-			err = fmt.Errorf("error reading files from \"data\" directory: %w", err)
+			err = fmt.Errorf("error walking through \"data\" directory: %w", err)
 			return
-		}
-
-		filenames := make([]string, len(files))
-		for i, file := range files {
-			filenames[i] = filepath.Join("data", file.Name())
 		}
 
 		s.datasets, err = embedding.GenerateDatasets(integrationID, apiToken, filenames)
@@ -146,7 +149,7 @@ func (s *Service) generateCompletion(ctx context.Context, integrationID, apiToke
 
 		messages = append(messages, copilot.ChatMessage{
 			Role: "system",
-			Content: "You are a helpful assistant that replies to user messages.  Use the following context when responding to a message.\n" +
+			Content: "You are a helpful assistant that replies to user messages. You are a Ruby on Rails and React expert. You have extensive knowledge of how designs systems work and best practices.  Use the following context when responding to a message.\n" +
 				"Context: " + string(fileContents),
 		})
 
