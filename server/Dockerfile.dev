@@ -1,0 +1,11 @@
+# Start from the official Golang image
+FROM golang:1.23
+
+# Set the Current Working Directory inside the container
+WORKDIR /app
+
+# Expose port 8080 to the outside world
+EXPOSE 8080
+
+# Command to run the executable
+ENTRYPOINT ["./dev-entry.sh"]

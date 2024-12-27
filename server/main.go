@@ -13,6 +13,7 @@ import (
 
 	"github.com/copilot-extensions/rag-extension/agent"
 	"github.com/copilot-extensions/rag-extension/config"
+	"github.com/copilot-extensions/rag-extension/embedding"
 	"github.com/copilot-extensions/rag-extension/oauth"
 )
 
@@ -33,6 +34,13 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("error fetching config: %w", err)
 	}
+
+	qClient, err := embedding.Init(config.QdrantHost, config.QdrantPort)
+	if err != nil {
+		return fmt.Errorf("error creating qdrant client: %w", err)
+	}
+
+	defer qClient.Close()
 
 	me, err := url.Parse(config.FQDN)
 	if err != nil {

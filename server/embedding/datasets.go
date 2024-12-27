@@ -8,7 +8,46 @@ import (
 	"os"
 
 	"github.com/copilot-extensions/rag-extension/copilot"
+	"github.com/qdrant/go-client/qdrant"
 )
+
+const COLLECTION_NAME = "primer-embeddings"
+
+func Init(qdrantHost string, qdrantPort int) (*qdrant.Client, error) {
+	// first check if the collection name exists
+	client, err := qdrant.NewClient(&qdrant.Config{
+		Host: qdrantHost,
+		Port: qdrantPort,
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("error creating qdrant client: %w", err)
+	}
+
+	exists, err := client.CollectionExists(context.Background(), COLLECTION_NAME)
+	if err != nil {
+		return nil, fmt.Errorf("error checking if collection exists: %w", err)
+	}
+
+	if exists {
+		return client, nil
+	}
+
+	// Create the collection
+	err = client.CreateCollection(context.Background(), &qdrant.CreateCollection{
+		CollectionName: COLLECTION_NAME,
+		VectorsConfig: qdrant.NewVectorsConfig(&qdrant.VectorParams{
+			Size:     1536,
+			Distance: qdrant.Distance_Cosine,
+		}),
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("error creating collection: %w", err)
+	}
+
+	return client, nil
+}
 
 func Create(ctx context.Context, integrationID, apiToken string, content string) ([]float32, error) {
 	resp, err := copilot.Embeddings(ctx, integrationID, apiToken, &copilot.EmbeddingsRequest{
