@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"math"
 	"os"
 
 	"github.com/copilot-extensions/rag-extension/copilot"
@@ -95,33 +94,23 @@ func GenerateDatasets(integrationID, apiToken string, filenames []string) ([]*Da
 	return datasets, nil
 }
 
-func FindBestDataset(datasets []*Dataset, target []float32) (*Dataset, error) {
-	var bestDataset *Dataset
-	var bestScore float32
-
-	var targetMagnitude float32
-	for i := 0; i < len(target); i++ {
-		targetMagnitude += target[i] * target[i]
+func FindTopNDatasets(n uint64, target []float32, client *qdrant.Client) ([]string, error) {
+	searchResult, err := client.Query(context.Background(), &qdrant.QueryPoints{
+		CollectionName: COLLECTION_NAME,
+		Query:          qdrant.NewQueryDense(target),
+		WithPayload:    qdrant.NewWithPayload(true),
+		WithVectors:    qdrant.NewWithVectors(true),
+		Limit:          &n,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error querying qdrant: %w", err)
 	}
 
-	for _, dataset := range datasets {
-		// Score similarity using Cosine Similarity
-		if len(target) != len(dataset.Embedding) {
-			return nil, fmt.Errorf("embeddings are different length, cannot compare")
-		}
+	filenames := make([]string, len(searchResult))
 
-		var docMagnitude, dotProduct float32
-		for i := 0; i < len(target); i++ {
-			docMagnitude += dataset.Embedding[i] * dataset.Embedding[i]
-			dotProduct += target[i] * dataset.Embedding[i]
-		}
-
-		dotProduct /= float32(math.Sqrt(float64(targetMagnitude)) * math.Sqrt(float64(docMagnitude)))
-		if dotProduct > bestScore {
-			bestDataset = dataset
-			bestScore = dotProduct
-		}
+	for i, result := range searchResult {
+		filenames[i] = result.Payload["filename"].GetStringValue()
 	}
 
-	return bestDataset, nil
+	return filenames, nil
 }

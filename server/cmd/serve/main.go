@@ -53,7 +53,7 @@ func run() error {
 	http.HandleFunc("/auth/authorization", oauthService.PreAuth)
 	http.HandleFunc("/auth/callback", oauthService.PostAuth)
 
-	agentService := agent.NewService(pubKey)
+	agentService := agent.NewService(pubKey, qClient)
 
 	http.HandleFunc("/agent", agentService.ChatCompletion)
 

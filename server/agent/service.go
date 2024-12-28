@@ -11,15 +11,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"math/big"
 	"net/http"
 	"os"
-	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/copilot-extensions/rag-extension/copilot"
 	"github.com/copilot-extensions/rag-extension/embedding"
+	"github.com/qdrant/go-client/qdrant"
 )
 
 // Service provides and endpoint for this agent to perform chat completions
@@ -29,12 +29,17 @@ type Service struct {
 	// Singleton
 	datasets     []*embedding.Dataset
 	datasetsInit *sync.Once
+
+	qClient *qdrant.Client
 }
 
-func NewService(pubKey *ecdsa.PublicKey) *Service {
+const TOP_N_DATASETS uint64 = 5
+
+func NewService(pubKey *ecdsa.PublicKey, qClient *qdrant.Client) *Service {
 	return &Service{
 		pubKey:       pubKey,
 		datasetsInit: &sync.Once{},
+		qClient:      qClient,
 	}
 }
 
@@ -79,33 +84,6 @@ func (s *Service) ChatCompletion(w http.ResponseWriter, r *http.Request) {
 func (s *Service) generateCompletion(ctx context.Context, integrationID, apiToken string, req *copilot.ChatRequest, w io.Writer) error {
 	// Initialize the datasets.  In a real application, these would be generated
 	// ahead of time and stored in a database
-	var err error
-	s.datasetsInit.Do(func() {
-		var filenames []string
-		err = filepath.WalkDir("data", func(path string, d fs.DirEntry, walkErr error) error {
-			if walkErr != nil {
-				return walkErr
-			}
-			if !d.IsDir() {
-				filenames = append(filenames, path)
-			}
-			return nil
-		})
-		if err != nil {
-			err = fmt.Errorf("error walking through \"data\" directory: %w", err)
-			return
-		}
-
-		s.datasets, err = embedding.GenerateDatasets(integrationID, apiToken, filenames)
-		if err != nil {
-			err = fmt.Errorf("error generating datasets: %w", err)
-			return
-		}
-	})
-	if err != nil {
-		return err
-	}
-
 	var messages []copilot.ChatMessage
 
 	// Create embeddings from user messages
@@ -126,31 +104,40 @@ func (s *Service) generateCompletion(ctx context.Context, integrationID, apiToke
 		}
 
 		// Load most appropriate dataset
-		dataset, err := embedding.FindBestDataset(s.datasets, emb)
+		filenames, err := embedding.FindTopNDatasets(TOP_N_DATASETS, emb, s.qClient)
 		if err != nil {
 			return fmt.Errorf("error computing best dataset")
 		}
 
-		if dataset == nil {
+		if len(filenames) == 0 {
 			break
 		}
 
-		fmt.Printf("loading dataset: %s\n", dataset.Filename)
+		var contexts []string
 
-		file, err := os.Open(dataset.Filename)
-		if err != nil {
-			return fmt.Errorf("failed to open documents: %w", err)
+		for _, filename := range filenames {
+			fmt.Println("using dataset", filename)
+			file, err := os.Open(filename)
+			if err != nil {
+				return fmt.Errorf("failed to open documents: %w", err)
+			}
+
+			fileContents, err := io.ReadAll(file)
+			if err != nil {
+				return fmt.Errorf("failed to read documents: %w", err)
+			}
+
+			contexts = append(contexts, string(fileContents))
 		}
 
-		fileContents, err := io.ReadAll(file)
-		if err != nil {
-			return fmt.Errorf("failed to read documents: %w", err)
-		}
+		//quick hack to ensure we always are in the limit
+		chatMessageContent :=
+			"You are a helpful assistant that replies to user messages. You are a Ruby on Rails and React expert. You have extensive knowledge of how designs systems work and best practices, especially the Primer design system.  Use the following context when responding to a message.\n" +
+				"Context: " + strings.Join(contexts, "\n")[:16384]
 
 		messages = append(messages, copilot.ChatMessage{
-			Role: "system",
-			Content: "You are a helpful assistant that replies to user messages. You are a Ruby on Rails and React expert. You have extensive knowledge of how designs systems work and best practices.  Use the following context when responding to a message.\n" +
-				"Context: " + string(fileContents),
+			Role:    "system",
+			Content: chatMessageContent,
 		})
 
 		break
