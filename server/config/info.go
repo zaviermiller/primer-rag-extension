@@ -25,6 +25,9 @@ type Info struct {
 
 	// QdrantPort is the port of the qdrant server
 	QdrantPort int
+
+	// OpenAIKey is the API key for OpenAI
+	OpenAIKey string
 }
 
 const (
@@ -34,6 +37,7 @@ const (
 	fqdnEnv         = "FQDN"
 	qdrantHostEnv   = "QDRANT_HOST"
 	qdrantPortEnv   = "QDRANT_PORT"
+	openAiKeyEnv    = "OPENAI_API_KEY"
 )
 
 func New() (*Info, error) {
@@ -74,6 +78,11 @@ func New() (*Info, error) {
 		return nil, fmt.Errorf("error parsing %s: %w", qdrantPortEnv, err)
 	}
 
+	openAiKey := os.Getenv(openAiKeyEnv)
+	if openAiKey == "" {
+		return nil, fmt.Errorf("%s environment variable required", openAiKeyEnv)
+	}
+
 	return &Info{
 		Port:         port,
 		FQDN:         fqdn,
@@ -81,5 +90,6 @@ func New() (*Info, error) {
 		ClientSecret: clientSecret,
 		QdrantHost:   qdrantHost,
 		QdrantPort:   qdrantPort,
+		OpenAIKey:    openAiKey,
 	}, nil
 }

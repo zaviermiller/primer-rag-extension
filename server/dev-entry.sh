@@ -4,5 +4,4 @@
 go mod download
 
 # run the server
-go run .
- 
+go run ./cmd/serve/main.go
